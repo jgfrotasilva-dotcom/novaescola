@@ -63,6 +63,7 @@ export default function EvolucaoFuncionalPage() {
 
   // Modal
   const [modalNova, setModalNova] = useState(false);
+  const [salvando, setSalvando] = useState(false);
   const [form, setForm] = useState({
     nivelAnterior: "I",
     nivelPosterior: "II",
@@ -197,32 +198,61 @@ export default function EvolucaoFuncionalPage() {
     if (servidorInfo) carregarEvolucoes(String(servidorInfo.id));
   }
 
-  async function salvarNova(e: FormEvent) {
-    e.preventDefault();
-    if (!servidorInfo) return;
+  async function salvarNova(e?: FormEvent) {
+    if (e) e.preventDefault();
+    console.log('[salvarNova] Iniciando salvamento...');
+    
+    if (!servidorInfo) {
+      console.error('[salvarNova] servidorInfo é null');
+      setErroForm("Servidor não selecionado");
+      return;
+    }
+    
+    if (!form.dataVigencia) {
+      setErroForm("Data de vigência é obrigatória");
+      return;
+    }
+    
     setErroForm("");
-
-    const res = await fetch("/api/evolucao-funcional", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+    setSalvando(true);
+    
+    try {
+      const payload = {
         servidorId: servidorInfo.id,
         nivelAnterior: form.nivelAnterior,
         nivelPosterior: form.nivelPosterior,
         dataVigencia: form.dataVigencia,
         dataDoe: form.dataDoe || null,
         ehUltima: form.ehUltima,
-      }),
-    });
-
-    if (!res.ok) {
-      const err = await res.json();
-      setErroForm(err.error || "Erro ao salvar");
-      return;
+      };
+      console.log('[salvarNova] Payload:', payload);
+      
+      const res = await fetch("/api/evolucao-funcional", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      
+      console.log('[salvarNova] Response status:', res.status);
+      
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Erro desconhecido" }));
+        console.error('[salvarNova] Erro da API:', err);
+        setErroForm(err.error || `Erro HTTP ${res.status}`);
+        return;
+      }
+      
+      const result = await res.json();
+      console.log('[salvarNova] Sucesso:', result);
+      
+      setModalNova(false);
+      carregarEvolucoes(String(servidorInfo.id));
+    } catch (err) {
+      console.error('[salvarNova] Exceção:', err);
+      setErroForm(`Erro inesperado: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setSalvando(false);
     }
-
-    setModalNova(false);
-    carregarEvolucoes(String(servidorInfo.id));
   }
 
   async function excluir(id: number) {
@@ -765,15 +795,25 @@ export default function EvolucaoFuncionalPage() {
               <button
                 type="button"
                 onClick={() => setModalNova(false)}
-                className="px-5 py-2.5 rounded-xl border border-slate-300 text-slate-700 font-semibold hover:bg-slate-50 transition"
+                disabled={salvando}
+                className="px-5 py-2.5 rounded-xl border border-slate-300 text-slate-700 font-semibold hover:bg-slate-50 transition disabled:opacity-50"
               >
                 Cancelar
               </button>
               <button
-                type="submit"
-                className="px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-semibold transition"
+                type="button"
+                onClick={() => salvarNova()}
+                disabled={salvando || !form.dataVigencia}
+                className="px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               >
-                ✓ Registrar Evolução
+                {salvando ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    Salvando...
+                  </>
+                ) : (
+                  <>✓ Registrar Evolução</>
+                )}
               </button>
             </div>
           </form>
