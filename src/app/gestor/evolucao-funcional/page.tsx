@@ -104,15 +104,32 @@ export default function EvolucaoFuncionalPage() {
       setServidorInfo(null);
       setEvolucoes([]);
       setProximaRegra(null);
+      setProximaDataSugerida(null);
       return;
     }
     setCarregando(true);
     try {
-      const r = await (await fetch(`/api/evolucao-funcional?tipo=evolucoes&servidorId=${servidorId}`)).json();
-      setServidorInfo(r.servidor);
-      setEvolucoes(r.evolucoes || []);
-      setProximaRegra(r.proximaRegra);
-      setProximaDataSugerida(r.proximaDataSugerida);
+      const url = `/api/evolucao-funcional?tipo=evolucoes&servidorId=${servidorId}`;
+      const response = await fetch(url);
+      if (!response.ok) {
+        console.error("Erro ao carregar evoluções:", response.status);
+        setServidorInfo(null);
+        setEvolucoes([]);
+        setProximaRegra(null);
+        setProximaDataSugerida(null);
+        return;
+      }
+      const r = await response.json();
+      setServidorInfo(r.servidor || null);
+      setEvolucoes(Array.isArray(r.evolucoes) ? r.evolucoes : []);
+      setProximaRegra(r.proximaRegra || null);
+      setProximaDataSugerida(r.proximaDataSugerida || null);
+    } catch (err) {
+      console.error("Erro ao carregar evoluções:", err);
+      setServidorInfo(null);
+      setEvolucoes([]);
+      setProximaRegra(null);
+      setProximaDataSugerida(null);
     } finally {
       setCarregando(false);
     }
@@ -258,6 +275,17 @@ export default function EvolucaoFuncionalPage() {
             {carregando && (
               <div className="text-center py-8">
                 <div className="w-10 h-10 mx-auto border-4 border-slate-700 border-t-transparent rounded-full animate-spin"></div>
+                <p className="mt-3 text-sm text-slate-600">Carregando evoluções...</p>
+              </div>
+            )}
+
+            {!carregando && servidorSelecionado && !servidorInfo && (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-5 text-sm text-amber-900">
+                <p className="font-semibold">⚠️ Nenhuma informação encontrada</p>
+                <p className="mt-1 text-amber-800">
+                  Verifique se o servidor selecionado tem cargo elegível (PEB I, PEB II ou Diretor de Escola)
+                  e categoria A-Efetivo ou ACT-F.
+                </p>
               </div>
             )}
 
@@ -302,13 +330,18 @@ export default function EvolucaoFuncionalPage() {
                 {(!servidorInfo.elegivelCargo || !servidorInfo.elegivelCategoria) && (
                   <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-900">
                     <p className="font-semibold flex items-center gap-2">
-                      <span>⚠️</span> Servidor sem direito à Evolução Funcional
+                      <span>⚠️</span> Servidor sem direito a NOVAS evoluções
                     </p>
                     <p className="mt-1">{servidorInfo.motivoInelegibilidade}</p>
+                    {evolucoes.length > 0 && (
+                      <p className="mt-2 text-amber-800">
+                        💡 As evoluções já registradas permanecem visíveis abaixo.
+                      </p>
+                    )}
                   </div>
                 )}
 
-                {/* Próxima evolução sugerida */}
+                {/* Próxima evolução sugerida (apenas se elegível e tem próxima regra) */}
                 {servidorInfo.elegivelCargo && servidorInfo.elegivelCategoria && proximaRegra && (
                   <div className="bg-sky-50 border border-sky-200 rounded-xl p-5">
                     <p className="text-xs uppercase tracking-widest text-sky-700 font-bold mb-1">
@@ -338,16 +371,35 @@ export default function EvolucaoFuncionalPage() {
                   </div>
                 )}
 
+                {/* Nível máximo (apenas se elegível, sem próxima regra e tem evoluções) */}
                 {servidorInfo.elegivelCargo && servidorInfo.elegivelCategoria && !proximaRegra && evolucoes.length > 0 && (
                   <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-sm text-emerald-900">
                     <p className="font-semibold">🎉 Nível máximo atingido (VIII)</p>
+                    <p className="mt-1 text-emerald-800">
+                      O servidor já alcançou o último nível de evolução funcional.
+                    </p>
                   </div>
                 )}
 
-                {/* Lista de evoluções */}
+                {/* Primeira evolução (elegível mas sem evoluções ainda) */}
+                {servidorInfo.elegivelCargo && servidorInfo.elegivelCategoria && evolucoes.length === 0 && !proximaRegra && (
+                  <div className="bg-sky-50 border border-sky-200 rounded-xl p-4 text-sm text-sky-900">
+                    <p className="font-semibold">📋 Nenhuma evolução registrada ainda</p>
+                    <p className="mt-1 text-sky-800">
+                      Este servidor ainda não possui evoluções cadastradas. Use o botão "Registrar Evolução" acima para cadastrar a primeira.
+                    </p>
+                  </div>
+                )}
+
+                {/* Lista de evoluções - SEMPRE aparece se houver evoluções */}
                 {evolucoes.length === 0 ? (
                   <div className="bg-white rounded-2xl border border-dashed border-slate-300 p-10 text-center">
-                    <p className="text-slate-500">Nenhuma evolução registrada.</p>
+                    <p className="text-slate-500">Nenhuma evolução registrada para este servidor.</p>
+                    {(!servidorInfo.elegivelCargo || !servidorInfo.elegivelCategoria) && (
+                      <p className="text-xs text-slate-400 mt-2">
+                        Servidor não elegível para novas evoluções.
+                      </p>
+                    )}
                   </div>
                 ) : (
                   <div className="space-y-3">
