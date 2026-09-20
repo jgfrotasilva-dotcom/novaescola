@@ -51,19 +51,17 @@ const NIVEIS = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII"];
 export default function EvolucaoFuncionalPage() {
   const router = useRouter();
   const [sessao, setSessao] = useState<any>(null);
-  const [aba, setAba] = useState<"evolucoes" | "regras" | "nova">("evolucoes");
+  const [aba, setAba] = useState<"evolucoes" | "regras">("evolucoes");
 
   const [servidores, setServidores] = useState<any[]>([]);
   const [servidorSelecionado, setServidorSelecionado] = useState<string>("");
   const [servidorInfo, setServidorInfo] = useState<ServidorInfo | null>(null);
   const [evolucoes, setEvolucoes] = useState<Evolucao[]>([]);
   const [carregando, setCarregando] = useState(false);
-  const [proximaRegra, setProximaRegra] = useState<Regra | null>(null);
-  const [proximaDataSugerida, setProximaDataSugerida] = useState<string | null>(null);
 
   const [regras, setRegras] = useState<{ DOCENTE: Regra[]; DIRETOR: Regra[] } | null>(null);
 
-  // Form nova evolução
+  // Modal
   const [modalNova, setModalNova] = useState(false);
   const [form, setForm] = useState({
     nivelAnterior: "I",
@@ -71,9 +69,6 @@ export default function EvolucaoFuncionalPage() {
     dataVigencia: "",
     dataDoe: "",
     ehUltima: true,
-    dataEfetiva: "",
-    intervencao: "",
-    justificativa: "",
   });
   const [erroForm, setErroForm] = useState("");
 
@@ -103,50 +98,43 @@ export default function EvolucaoFuncionalPage() {
     if (!servidorId) {
       setServidorInfo(null);
       setEvolucoes([]);
-      setProximaRegra(null);
-      setProximaDataSugerida(null);
       return;
     }
     setCarregando(true);
     try {
-      const url = `/api/evolucao-funcional?tipo=evolucoes&servidorId=${servidorId}`;
-      const response = await fetch(url);
+      const response = await fetch(`/api/evolucao-funcional?tipo=evolucoes&servidorId=${servidorId}`);
       if (!response.ok) {
-        console.error("Erro ao carregar evoluções:", response.status);
         setServidorInfo(null);
         setEvolucoes([]);
-        setProximaRegra(null);
-        setProximaDataSugerida(null);
         return;
       }
       const r = await response.json();
       setServidorInfo(r.servidor || null);
       setEvolucoes(Array.isArray(r.evolucoes) ? r.evolucoes : []);
-      setProximaRegra(r.proximaRegra || null);
-      setProximaDataSugerida(r.proximaDataSugerida || null);
     } catch (err) {
       console.error("Erro ao carregar evoluções:", err);
       setServidorInfo(null);
       setEvolucoes([]);
-      setProximaRegra(null);
-      setProximaDataSugerida(null);
     } finally {
       setCarregando(false);
     }
   }
 
   function abrirNova() {
-    if (!servidorInfo || !proximaRegra) return;
+    if (!servidorInfo || !regras) return;
     setErroForm("");
+
+    // Pré-preenche com nível atual do servidor
+    const nivelAtual = servidorInfo.nivel || "I";
+    const tabelaRegras = servidorInfo.tipoRegra === "DIRETOR" ? regras.DIRETOR : regras.DOCENTE;
+    const proximaRegra = tabelaRegras.find((r) => r.nivelOrigem === nivelAtual);
+
     setForm({
-      nivelAnterior: proximaRegra.nivelOrigem,
-      nivelPosterior: proximaRegra.nivelDestino,
-      dataVigencia: proximaDataSugerida || "",
+      nivelAnterior: nivelAtual,
+      nivelPosterior: proximaRegra?.nivelDestino || NIVEIS[NIVEIS.indexOf(nivelAtual) + 1] || nivelAtual,
+      dataVigencia: "",
       dataDoe: "",
       ehUltima: true,
-      dataEfetiva: "",
-      intervencao: "",
-      justificativa: "",
     });
     setModalNova(true);
   }
@@ -175,11 +163,11 @@ export default function EvolucaoFuncionalPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         servidorId: servidorInfo.id,
-        ...form,
+        nivelAnterior: form.nivelAnterior,
+        nivelPosterior: form.nivelPosterior,
+        dataVigencia: form.dataVigencia,
         dataDoe: form.dataDoe || null,
-        dataEfetiva: form.dataEfetiva || null,
-        intervencao: form.intervencao || null,
-        justificativa: form.justificativa || null,
+        ehUltima: form.ehUltima,
       }),
     });
 
@@ -199,6 +187,30 @@ export default function EvolucaoFuncionalPage() {
     if (servidorInfo) carregarEvolucoes(String(servidorInfo.id));
   }
 
+  // Calcula próxima evolução baseada no nível de destino
+  function calcularProximaEvolucao() {
+    if (!form.ehUltima || !form.dataVigencia || !servidorInfo || !regras) return null;
+    const tabelaRegras = servidorInfo.tipoRegra === "DIRETOR" ? regras.DIRETOR : regras.DOCENTE;
+    const regraAtual = tabelaRegras.find((r) => r.nivelOrigem === form.nivelAnterior && r.nivelDestino === form.nivelPosterior);
+    if (!regraAtual) return null;
+
+    // Próxima regra: a que tem origem = nível de destino atual
+    const proximaRegra = tabelaRegras.find((r) => r.nivelOrigem === form.nivelPosterior);
+    if (!proximaRegra) {
+      return { nivelMaximo: true };
+    }
+
+    // Calcula data: vigência + interstício da regra ATUAL (pois a evolução atual é a última)
+    const d = new Date(form.dataVigencia + "T00:00:00");
+    d.setFullYear(d.getFullYear() + regraAtual.intersticioAnos);
+    return {
+      nivelOrigem: proximaRegra.nivelOrigem,
+      nivelDestino: proximaRegra.nivelDestino,
+      dataPrevista: d.toISOString().slice(0, 10),
+      intersticio: regraAtual.intersticioAnos,
+    };
+  }
+
   if (!sessao) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -206,6 +218,9 @@ export default function EvolucaoFuncionalPage() {
       </div>
     );
   }
+
+  const proximaEvolucao = calcularProximaEvolucao();
+  const podeRegistrar = servidorInfo?.elegivelCargo && servidorInfo?.elegivelCategoria;
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -341,23 +356,22 @@ export default function EvolucaoFuncionalPage() {
                   </div>
                 )}
 
-                {/* Próxima evolução sugerida (apenas se elegível e tem próxima regra) */}
-                {servidorInfo.elegivelCargo && servidorInfo.elegivelCategoria && proximaRegra && (
+                {/* Botão Registrar Evolução - SEMPRE aparece se elegível */}
+                {podeRegistrar && (
                   <div className="bg-sky-50 border border-sky-200 rounded-xl p-5">
-                    <p className="text-xs uppercase tracking-widest text-sky-700 font-bold mb-1">
-                      Próxima evolução prevista
-                    </p>
                     <div className="flex items-center justify-between gap-3 flex-wrap">
                       <div>
-                        <p className="text-2xl font-bold text-slate-900">
-                          Nível {proximaRegra.nivelOrigem} → {proximaRegra.nivelDestino}
+                        <p className="text-xs uppercase tracking-widest text-sky-700 font-bold mb-1">
+                          {evolucoes.length === 0 ? "Primeira Evolução" : "Nova Evolução"}
                         </p>
-                        <p className="text-sm text-slate-600 mt-1">
-                          Interstício: <strong>{proximaRegra.intersticioAnos} anos</strong>
+                        <p className="text-lg font-bold text-slate-900">
+                          {evolucoes.length === 0
+                            ? "Cadastrar a primeira evolução deste servidor"
+                            : `Cadastrar ${evolucoes.length + 1}ª evolução`}
                         </p>
-                        {proximaDataSugerida && (
-                          <p className="text-sm text-sky-700 mt-1">
-                            📅 Data prevista: <strong>{formatarData(proximaDataSugerida)}</strong>
+                        {servidorInfo.nivel && (
+                          <p className="text-sm text-slate-600 mt-1">
+                            Nível atual: <strong>{servidorInfo.nivel}</strong>
                           </p>
                         )}
                       </div>
@@ -372,7 +386,7 @@ export default function EvolucaoFuncionalPage() {
                 )}
 
                 {/* Nível máximo (apenas se elegível, sem próxima regra e tem evoluções) */}
-                {servidorInfo.elegivelCargo && servidorInfo.elegivelCategoria && !proximaRegra && evolucoes.length > 0 && (
+                {podeRegistrar && evolucoes.length > 0 && servidorInfo.nivel === "VIII" && (
                   <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-sm text-emerald-900">
                     <p className="font-semibold">🎉 Nível máximo atingido (VIII)</p>
                     <p className="mt-1 text-emerald-800">
@@ -381,17 +395,7 @@ export default function EvolucaoFuncionalPage() {
                   </div>
                 )}
 
-                {/* Primeira evolução (elegível mas sem evoluções ainda) */}
-                {servidorInfo.elegivelCargo && servidorInfo.elegivelCategoria && evolucoes.length === 0 && !proximaRegra && (
-                  <div className="bg-sky-50 border border-sky-200 rounded-xl p-4 text-sm text-sky-900">
-                    <p className="font-semibold">📋 Nenhuma evolução registrada ainda</p>
-                    <p className="mt-1 text-sky-800">
-                      Este servidor ainda não possui evoluções cadastradas. Use o botão "Registrar Evolução" acima para cadastrar a primeira.
-                    </p>
-                  </div>
-                )}
-
-                {/* Lista de evoluções - SEMPRE aparece se houver evoluções */}
+                {/* Lista de evoluções */}
                 {evolucoes.length === 0 ? (
                   <div className="bg-white rounded-2xl border border-dashed border-slate-300 p-10 text-center">
                     <p className="text-slate-500">Nenhuma evolução registrada para este servidor.</p>
@@ -572,12 +576,12 @@ export default function EvolucaoFuncionalPage() {
           </div>
         )}
 
-        {/* Modal Nova Evolução */}
+        {/* Modal Nova Evolução - Simplificado */}
         <Modal
           aberto={modalNova}
           onClose={() => setModalNova(false)}
           titulo="Registrar Evolução Funcional"
-          largura="max-w-3xl"
+          largura="max-w-2xl"
         >
           <form onSubmit={salvarNova} className="space-y-4">
             {servidorInfo && (
@@ -587,23 +591,23 @@ export default function EvolucaoFuncionalPage() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="font-semibold text-slate-900 truncate">{servidorInfo.nome}</p>
-                  <p className="text-xs text-slate-500">{servidorInfo.cargo} · {servidorInfo.categoria}</p>
+                  <p className="text-xs text-slate-500">{servidorInfo.cargo} · {servidorInfo.categoria} · Nível {servidorInfo.nivel}</p>
                 </div>
               </div>
             )}
 
-            {/* Transição */}
+            {/* Transição: De → Para */}
             <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
-              <p className="text-xs uppercase tracking-widest text-emerald-700 font-bold mb-2">
+              <p className="text-xs uppercase tracking-widest text-emerald-700 font-bold mb-3">
                 Transição de Nível
               </p>
               <div className="flex items-center justify-center gap-4">
                 <div className="text-center">
-                  <p className="text-xs text-slate-500">De</p>
+                  <p className="text-xs text-slate-500 mb-1">De (nível atual)</p>
                   <select
                     value={form.nivelAnterior}
                     onChange={(e) => setForm({ ...form, nivelAnterior: e.target.value })}
-                    className="mt-1 px-3 py-2 rounded-lg border border-slate-300 bg-white font-bold text-xl text-center"
+                    className="px-3 py-2 rounded-lg border border-slate-300 bg-white font-bold text-xl text-center"
                   >
                     {NIVEIS.map((n) => (
                       <option key={n} value={n}>{n}</option>
@@ -612,11 +616,11 @@ export default function EvolucaoFuncionalPage() {
                 </div>
                 <div className="text-3xl text-emerald-600 font-bold">→</div>
                 <div className="text-center">
-                  <p className="text-xs text-slate-500">Para</p>
+                  <p className="text-xs text-slate-500 mb-1">Para (novo nível)</p>
                   <select
                     value={form.nivelPosterior}
                     onChange={(e) => setForm({ ...form, nivelPosterior: e.target.value })}
-                    className="mt-1 px-3 py-2 rounded-lg border border-slate-300 bg-white font-bold text-xl text-center"
+                    className="px-3 py-2 rounded-lg border border-slate-300 bg-white font-bold text-xl text-center"
                   >
                     {NIVEIS.map((n) => (
                       <option key={n} value={n}>{n}</option>
@@ -624,13 +628,9 @@ export default function EvolucaoFuncionalPage() {
                   </select>
                 </div>
               </div>
-              {proximaRegra && (
-                <p className="text-xs text-center text-emerald-800 mt-2">
-                  Regra: {proximaRegra.intersticioAnos} anos de interstício
-                </p>
-              )}
             </div>
 
+            {/* Datas */}
             <div className="grid md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1.5">Data de Vigência *</label>
@@ -668,60 +668,41 @@ export default function EvolucaoFuncionalPage() {
                   </p>
                   <p className="text-xs text-amber-800 mt-1">
                     Se marcado, o sistema calculará automaticamente a data da próxima evolução
-                    (data de vigência + interstício do próximo nível).
+                    com base nas regras do servidor.
                   </p>
-                  {form.ehUltima && form.dataVigencia && proximaRegra && (
+
+                  {/* Preview da próxima evolução quando checkbox marcado */}
+                  {form.ehUltima && form.dataVigencia && proximaEvolucao && (
                     <div className="mt-3 bg-white rounded-lg p-3 border border-amber-200">
-                      <p className="text-xs text-slate-500 mb-1">📅 Próxima evolução prevista:</p>
-                      <p className="font-bold text-slate-900 text-lg">
-                        {proximaRegra.nivelDestino} → {NIVEIS[NIVEIS.indexOf(proximaRegra.nivelDestino) + 1] || "—"}
-                      </p>
-                      <p className="text-sm text-sky-700 mt-1">
-                        <strong>Data prevista:</strong>{" "}
-                        {(() => {
-                          const d = new Date(form.dataVigencia + "T00:00:00");
-                          d.setFullYear(d.getFullYear() + (proximaRegra.intersticioAnos || 0));
-                          return formatarData(d.toISOString().slice(0, 10));
-                        })()}
-                      </p>
-                      <p className="text-xs text-slate-500 mt-1">
-                        (vigência atual + {proximaRegra.intersticioAnos} anos)
-                      </p>
+                      {proximaEvolucao.nivelMaximo ? (
+                        <p className="text-sm font-semibold text-emerald-700">
+                          🎉 Nível máximo atingido (VIII) - não há próxima evolução
+                        </p>
+                      ) : (
+                        <>
+                          <p className="text-xs text-slate-500 mb-1">📅 Próxima evolução prevista:</p>
+                          <p className="font-bold text-slate-900 text-lg">
+                            {proximaEvolucao.nivelOrigem} → {proximaEvolucao.nivelDestino}
+                          </p>
+                          <p className="text-sm text-sky-700 mt-1">
+                            <strong>Data prevista:</strong>{" "}
+                            {formatarData(proximaEvolucao.dataPrevista)}
+                          </p>
+                          <p className="text-xs text-slate-500 mt-1">
+                            (vigência atual + {proximaEvolucao.intersticio} anos)
+                          </p>
+                        </>
+                      )}
                     </div>
+                  )}
+
+                  {form.ehUltima && !form.dataVigencia && (
+                    <p className="text-xs text-amber-700 mt-2 italic">
+                      💡 Informe a data de vigência para calcular a próxima evolução
+                    </p>
                   )}
                 </div>
               </label>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Data Efetiva</label>
-              <input
-                type="date"
-                value={form.dataEfetiva}
-                onChange={(e) => setForm({ ...form, dataEfetiva: e.target.value })}
-                className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-500 focus:outline-none text-sm"
-              />
-            </div>
-
-            <div className="grid md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1.5">Intervenção</label>
-                <input
-                  type="text"
-                  value={form.intervencao}
-                  onChange={(e) => setForm({ ...form, intervencao: e.target.value })}
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-500 focus:outline-none text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1.5">Justificativa</label>
-                <input
-                  type="text"
-                  value={form.justificativa}
-                  onChange={(e) => setForm({ ...form, justificativa: e.target.value })}
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-500 focus:outline-none text-sm"
-                />
-              </div>
             </div>
 
             {erroForm && (
