@@ -22,7 +22,7 @@ export const users = pgTable(
     senhaHash: varchar("senha_hash", { length: 255 }).notNull(),
     nome: varchar("nome", { length: 200 }).notNull(),
     papel: varchar("papel", { length: 20 }).notNull(), // 'servidor' | 'gestor'
-    servidorId: integer("servidor_id"),
+    servidorId: integer("servidor_id").references(() => servidores.id, { onDelete: "cascade" }),
     ativo: boolean("ativo").notNull().default(true),
     criadoEm: timestamp("criado_em").notNull().defaultNow(),
   },

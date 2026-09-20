@@ -1,9 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { eq, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { servidores } from "@/db/schema";
-import { obterSessao } from "@/lib/auth";
+import { servidores, users } from "@/db/schema";
+import { obterSessao, hashSenha } from "@/lib/auth";
 import { processarPlanilha, gerarPlanilhaModelo } from "@/lib/excel";
+
+// Gera senha padrão baseada na data de nascimento (DDMMAAAA)
+function gerarSenhaPadrao(dataNascimento: string | null): string {
+  if (!dataNascimento) return "12345678";
+  const [y, m, d] = dataNascimento.split("-");
+  if (!y || !m || !d) return "12345678";
+  return `${d}${m}${y}`;
+}
 
 // Gera uma matrícula única baseada em timestamp + random
 async function gerarMatricula(): Promise<string> {
@@ -100,7 +108,7 @@ export async function POST(req: NextRequest) {
 
         try {
           const matricula = await matriculaUnica();
-          await db.insert(servidores).values({
+          const [servidorCriado] = await db.insert(servidores).values({
             matricula,
             nomeCompleto: r.nomeCompleto,
             cpf: r.cpf,
@@ -121,7 +129,26 @@ export async function POST(req: NextRequest) {
             dtingCtd: r.dtingCtd,
             dtfimCtd: r.dtfimCtd,
             situacao: r.situacao,
-          });
+          }).returning();
+          
+          // Criar automaticamente um usuário para o servidor importado
+          try {
+            const senhaPadrao = gerarSenhaPadrao(servidorCriado.dataNascimento);
+            const senhaHash = await hashSenha(senhaPadrao);
+            
+            await db.insert(users).values({
+              matricula: servidorCriado.matricula,
+              senhaHash,
+              nome: servidorCriado.nomeCompleto,
+              papel: "servidor",
+              servidorId: servidorCriado.id,
+              ativo: true,
+            });
+          } catch (userErr) {
+            console.error(`Erro ao criar usuário para ${servidorCriado.matricula}:`, userErr);
+            // Não falha a importação se a criação do usuário falhar
+          }
+          
           inseridos++;
         } catch (err) {
           errosDB.push({
