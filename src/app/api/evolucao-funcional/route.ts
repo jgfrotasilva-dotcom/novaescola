@@ -3,6 +3,7 @@ import { eq, asc, desc, and } from "drizzle-orm";
 import { db } from "@/db";
 import { evolucaoFuncional, servidores } from "@/db/schema";
 import { obterSessao } from "@/lib/auth";
+import { addLog } from "@/app/api/logs/route";
 
 // ============================================================
 // REGRAS DE EVOLUÇÃO (apenas interstício)
@@ -173,113 +174,159 @@ export async function GET(req: NextRequest) {
 // POST - Cadastrar evolução
 // ============================================================
 export async function POST(req: NextRequest) {
-  const sessao = await obterSessao();
-  if (!sessao || sessao.papel !== "gestor") {
-    return NextResponse.json({ error: "Apenas gestores" }, { status: 403 });
-  }
+  try {
+    addLog('[POST /api/evolucao-funcional] Iniciando...');
+    
+    const sessao = await obterSessao();
+    if (!sessao || sessao.papel !== "gestor") {
+      addLog('[POST] Erro: Não é gestor');
+      return NextResponse.json({ error: "Apenas gestores" }, { status: 403 });
+    }
 
-  const body = await req.json();
-  const {
-    servidorId,
-    nivelAnterior,
-    nivelPosterior,
-    dataVigencia,
-    dataDoe,
-    ehUltima,
-    dataEfetiva,
-    intervencao,
-    justificativa,
-  } = body;
-
-  if (!servidorId || !nivelAnterior || !nivelPosterior || !dataVigencia) {
-    return NextResponse.json(
-      { error: "Campos obrigatórios: servidorId, nivelAnterior, nivelPosterior, dataVigencia" },
-      { status: 400 }
-    );
-  }
-
-  // Valida servidor
-  const [servidor] = await db.select().from(servidores).where(eq(servidores.id, Number(servidorId))).limit(1);
-  if (!servidor) return NextResponse.json({ error: "Servidor não encontrado" }, { status: 404 });
-
-  const analiseCargo = analisarCargo(servidor.cargo);
-  if (!analiseCargo.elegivel || !analiseCargo.tipoRegra) {
-    return NextResponse.json(
-      { error: analiseCargo.motivo || "Cargo não elegível" },
-      { status: 400 }
-    );
-  }
-
-  if (!podeEvoluir(servidor.categoria)) {
-    return NextResponse.json(
-      { error: `Categoria "${servidor.categoria}" não elegível (apenas A-Efetivo ou ACT-F)` },
-      { status: 400 }
-    );
-  }
-
-  // Busca regra para a transição
-  const regra = getRegra(analiseCargo.tipoRegra, nivelAnterior, nivelPosterior);
-  if (!regra) {
-    return NextResponse.json(
-      { error: `Transição ${nivelAnterior} → ${nivelPosterior} não existe na tabela de regras.` },
-      { status: 400 }
-    );
-  }
-
-  // Verifica duplicata de número
-  const existentes = await db
-    .select()
-    .from(evolucaoFuncional)
-    .where(eq(evolucaoFuncional.servidorId, Number(servidorId)))
-    .orderBy(asc(evolucaoFuncional.numero));
-
-  const numero = existentes.length + 1;
-  const ultima = existentes.length > 0 ? existentes[existentes.length - 1] : null;
-
-  // Se ehUltima = true, calcula a próxima data
-  const tabela = analiseCargo.tipoRegra === "DIRETOR" ? REGRAS_DIRETOR : REGRAS_DOCENTE;
-  const proximaRegra = tabela.find((r) => r.nivelOrigem === nivelPosterior);
-  const proximaData = ehUltima && proximaRegra ? adicionarAnos(dataVigencia, proximaRegra.intersticioAnos) : null;
-
-  // Data calculada (baseada na evolução anterior)
-  const dataCalculada = ultima ? adicionarAnos(ultima.dataVigencia, regra.intersticioAnos) : null;
-
-  // Se esta evolução for marcada como "última", desmarca as outras
-  if (ehUltima) {
-    await db
-      .update(evolucaoFuncional)
-      .set({ ehUltima: false, proximaData: null })
-      .where(eq(evolucaoFuncional.servidorId, Number(servidorId)));
-  }
-
-  const [criada] = await db
-    .insert(evolucaoFuncional)
-    .values({
-      servidorId: Number(servidorId),
-      numero,
+    const body = await req.json();
+    addLog(`[POST] Body recebido: ${JSON.stringify(body)}`);
+    
+    const {
+      servidorId,
       nivelAnterior,
       nivelPosterior,
       dataVigencia,
-      dataDoe: dataDoe || null,
-      ehUltima: Boolean(ehUltima),
-      intersticioAnos: regra.intersticioAnos,
-      ultimaEvolucao: ultima?.dataVigencia || null,
-      proximaData,
-      dataCalculada,
-      dataEfetiva: dataEfetiva || null,
-      intervencao: intervencao || null,
-      justificativa: justificativa || null,
-      responsavel: sessao.nome,
-    })
-    .returning();
+      dataDoe,
+      ehUltima,
+      dataEfetiva,
+      intervencao,
+      justificativa,
+    } = body;
 
-  // Atualiza o nível do servidor
-  await db
-    .update(servidores)
-    .set({ nivel: nivelPosterior })
-    .where(eq(servidores.id, Number(servidorId)));
+    if (!servidorId || !nivelAnterior || !nivelPosterior || !dataVigencia) {
+      addLog('[POST] Erro: Campos obrigatórios faltando');
+      return NextResponse.json(
+        { error: "Campos obrigatórios: servidorId, nivelAnterior, nivelPosterior, dataVigencia" },
+        { status: 400 }
+      );
+    }
 
-  return NextResponse.json(criada, { status: 201 });
+    // Valida servidor
+    addLog(`[POST] Buscando servidor ID: ${servidorId}`);
+    const [servidor] = await db.select().from(servidores).where(eq(servidores.id, Number(servidorId))).limit(1);
+    if (!servidor) {
+      addLog('[POST] Erro: Servidor não encontrado');
+      return NextResponse.json({ error: "Servidor não encontrado" }, { status: 404 });
+    }
+    addLog(`[POST] Servidor encontrado: ${servidor.nomeCompleto}`);
+
+    const analiseCargo = analisarCargo(servidor.cargo);
+    addLog(`[POST] Análise cargo: ${JSON.stringify(analiseCargo)}`);
+    
+    if (!analiseCargo.elegivel || !analiseCargo.tipoRegra) {
+      addLog('[POST] Erro: Cargo não elegível');
+      return NextResponse.json(
+        { error: analiseCargo.motivo || "Cargo não elegível" },
+        { status: 400 }
+      );
+    }
+
+    if (!podeEvoluir(servidor.categoria)) {
+      addLog('[POST] Erro: Categoria não elegível');
+      return NextResponse.json(
+        { error: `Categoria "${servidor.categoria}" não elegível (apenas A-Efetivo ou ACT-F)` },
+        { status: 400 }
+      );
+    }
+
+    // Busca regra para a transição
+    addLog(`[POST] Buscando regra para: ${nivelAnterior} → ${nivelPosterior}`);
+    const regra = getRegra(analiseCargo.tipoRegra, nivelAnterior, nivelPosterior);
+    if (!regra) {
+      addLog('[POST] Erro: Regra não encontrada');
+      return NextResponse.json(
+        { error: `Transição ${nivelAnterior} → ${nivelPosterior} não existe na tabela de regras.` },
+        { status: 400 }
+      );
+    }
+    addLog(`[POST] Regra encontrada: ${JSON.stringify(regra)}`);
+
+    // Verifica duplicata de número
+    addLog('[POST] Buscando evoluções existentes...');
+    const existentes = await db
+      .select()
+      .from(evolucaoFuncional)
+      .where(eq(evolucaoFuncional.servidorId, Number(servidorId)))
+      .orderBy(asc(evolucaoFuncional.numero));
+
+    const numero = existentes.length + 1;
+    const ultima = existentes.length > 0 ? existentes[existentes.length - 1] : null;
+    addLog(`[POST] Número da nova evolução: ${numero}`);
+
+    // Se ehUltima = true, calcula a próxima data
+    const tabela = analiseCargo.tipoRegra === "DIRETOR" ? REGRAS_DIRETOR : REGRAS_DOCENTE;
+    const proximaRegra = tabela.find((r) => r.nivelOrigem === nivelPosterior);
+    
+    let proximaData = null;
+    if (ehUltima && proximaRegra) {
+      addLog('[POST] Calculando próxima data...');
+      proximaData = adicionarAnos(dataVigencia, proximaRegra.intersticioAnos);
+      addLog(`[POST] Próxima data: ${proximaData}`);
+    }
+
+    // Data calculada (baseada na evolução anterior)
+    let dataCalculada = null;
+    if (ultima && ultima.dataVigencia) {
+      addLog('[POST] Calculando data calculada...');
+      dataCalculada = adicionarAnos(ultima.dataVigencia, regra.intersticioAnos);
+      addLog(`[POST] Data calculada: ${dataCalculada}`);
+    }
+
+    // Se esta evolução for marcada como "última", desmarca as outras
+    if (ehUltima) {
+      addLog('[POST] Desmarcando outras evoluções como última...');
+      await db
+        .update(evolucaoFuncional)
+        .set({ ehUltima: false, proximaData: null })
+        .where(eq(evolucaoFuncional.servidorId, Number(servidorId)));
+    }
+
+    addLog('[POST] Inserindo nova evolução...');
+    const [criada] = await db
+      .insert(evolucaoFuncional)
+      .values({
+        servidorId: Number(servidorId),
+        numero,
+        nivelAnterior,
+        nivelPosterior,
+        dataVigencia,
+        dataDoe: dataDoe || null,
+        ehUltima: Boolean(ehUltima),
+        intersticioAnos: regra.intersticioAnos,
+        ultimaEvolucao: ultima?.dataVigencia || null,
+        proximaData,
+        dataCalculada,
+        dataEfetiva: dataEfetiva || null,
+        intervencao: intervencao || null,
+        justificativa: justificativa || null,
+        responsavel: sessao.nome,
+      })
+      .returning();
+
+    addLog(`[POST] Evolução criada: ${JSON.stringify(criada)}`);
+
+    // Atualiza o nível do servidor
+    addLog('[POST] Atualizando nível do servidor...');
+    await db
+      .update(servidores)
+      .set({ nivel: nivelPosterior })
+      .where(eq(servidores.id, Number(servidorId)));
+
+    addLog('[POST] Sucesso!');
+    return NextResponse.json(criada, { status: 201 });
+  } catch (error) {
+    const errorMsg = error instanceof Error ? `${error.message}\n${error.stack}` : String(error);
+    addLog(`[POST] ERRO INESPERADO: ${errorMsg}`);
+    return NextResponse.json(
+      { error: `Erro interno: ${error instanceof Error ? error.message : String(error)}` },
+      { status: 500 }
+    );
+  }
 }
 
 // ============================================================
