@@ -102,19 +102,63 @@ export default function EvolucaoFuncionalPage() {
     }
     setCarregando(true);
     try {
-      const response = await fetch(`/api/evolucao-funcional?tipo=evolucoes&servidorId=${servidorId}`);
-      if (!response.ok) {
-        setServidorInfo(null);
-        setEvolucoes([]);
-        return;
+      // Primeiro, busca as info do servidor (sempre disponível)
+      const srvResponse = await fetch(`/api/servidores?id=${servidorId}`);
+      if (srvResponse.ok) {
+        const srv = await srvResponse.json();
+        if (srv && srv.id) {
+          // Analisa elegibilidade localmente
+          const cargo = (srv.cargo || "").toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+          const cat = (srv.categoria || "").toUpperCase();
+          const elegivelCargo = cargo.includes("DIRETOR") || cargo.includes("PEB I") || cargo.includes("PEB II") || cargo.includes("PROFESSOR DE EDUCACAO BASICA");
+          const elegivelCategoria = !srv.categoria || cat.includes("EFETIV") || cat === "A" || cat.includes("ACT") || cat === "F";
+          let tipoRegra: "DOCENTE" | "DIRETOR" | null = null;
+          if (cargo.includes("DIRETOR")) tipoRegra = "DIRETOR";
+          else if (elegivelCargo) tipoRegra = "DOCENTE";
+
+          setServidorInfo({
+            id: srv.id,
+            nome: srv.nomeCompleto,
+            matricula: srv.matricula,
+            cargo: srv.cargo,
+            categoria: srv.categoria,
+            nivel: srv.nivel,
+            dataAdmissao: srv.dataAdmissao,
+            elegivelCargo,
+            elegivelCategoria,
+            motivoInelegibilidade: !elegivelCargo
+              ? `Cargo "${srv.cargo}" não elegível (apenas PEB I, PEB II ou Diretor)`
+              : !elegivelCategoria
+              ? `Categoria "${srv.categoria}" não elegível (apenas A-Efetivo ou ACT-F)`
+              : null,
+            tipoRegra,
+          });
+        }
       }
-      const r = await response.json();
-      setServidorInfo(r.servidor || null);
-      setEvolucoes(Array.isArray(r.evolucoes) ? r.evolucoes : []);
+
+      // Depois, busca as evoluções
+      try {
+        const evResponse = await fetch(`/api/evolucao-funcional?tipo=evolucoes&servidorId=${servidorId}`);
+        if (evResponse.ok) {
+          const r = await evResponse.json();
+          // Normaliza as evoluções para garantir que ehUltima seja sempre boolean
+          const evs = Array.isArray(r.evolucoes)
+            ? r.evolucoes.map((e: any) => ({ ...e, ehUltima: Boolean(e.ehUltima) }))
+            : [];
+          setEvolucoes(evs);
+          // Se a API retornou info de servidor, usa essa (mais completa)
+          if (r.servidor && r.servidor.id) {
+            setServidorInfo(r.servidor);
+          }
+        } else {
+          setEvolucoes([]);
+        }
+      } catch (evErr) {
+        console.error("Erro ao carregar evoluções:", evErr);
+        setEvolucoes([]);
+      }
     } catch (err) {
-      console.error("Erro ao carregar evoluções:", err);
-      setServidorInfo(null);
-      setEvolucoes([]);
+      console.error("Erro ao carregar dados:", err);
     } finally {
       setCarregando(false);
     }
@@ -296,11 +340,17 @@ export default function EvolucaoFuncionalPage() {
 
             {!carregando && servidorSelecionado && !servidorInfo && (
               <div className="bg-amber-50 border border-amber-200 rounded-xl p-5 text-sm text-amber-900">
-                <p className="font-semibold">⚠️ Nenhuma informação encontrada</p>
+                <p className="font-semibold">⚠️ Não foi possível carregar as informações</p>
                 <p className="mt-1 text-amber-800">
-                  Verifique se o servidor selecionado tem cargo elegível (PEB I, PEB II ou Diretor de Escola)
-                  e categoria A-Efetivo ou ACT-F.
+                  Tente selecionar outro servidor ou recarregue a página. Se o problema persistir,
+                  verifique se o servidor está cadastrado corretamente.
                 </p>
+                <button
+                  onClick={() => carregarEvolucoes(servidorSelecionado)}
+                  className="mt-3 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-sm font-semibold transition"
+                >
+                  🔄 Tentar novamente
+                </button>
               </div>
             )}
 
