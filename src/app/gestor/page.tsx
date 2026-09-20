@@ -313,6 +313,25 @@ export default function GestorPage() {
                   </div>
                 </div>
               </Link>
+              <Link
+                href="/gestor/relatorios"
+                className="group bg-white rounded-2xl p-5 border border-slate-200 shadow-sm hover:shadow-md transition"
+              >
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="text-xs uppercase tracking-widest text-slate-500 font-semibold mb-1">
+                      Impressão
+                    </p>
+                    <h3 className="text-lg font-bold text-slate-900">Relatórios</h3>
+                    <p className="text-sm text-slate-600 mt-1">
+                      Gerais, por cargo e categoria
+                    </p>
+                  </div>
+                  <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center text-xl group-hover:scale-110 transition-transform">
+                    📊
+                  </div>
+                </div>
+              </Link>
             </div>
 
             {/* Barra de busca + ação */}
