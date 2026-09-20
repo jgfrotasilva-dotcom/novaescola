@@ -40,6 +40,13 @@ export async function GET(req: NextRequest) {
   const tipo = url.searchParams.get("tipo");
   const servidorId = url.searchParams.get("servidorId");
 
+  // Lista configurações de vantagens pessoais
+  if (tipo === "config") {
+    const { configVantagensPessoais } = await import("@/db/schema");
+    const rows = await db.select().from(configVantagensPessoais);
+    return NextResponse.json(rows);
+  }
+
   if (tipo === "ats" && servidorId) {
     const sid = Number(servidorId);
     if (sessao.papel === "servidor" && sessao.servidorId !== sid) {

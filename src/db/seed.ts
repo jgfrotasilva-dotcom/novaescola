@@ -1,5 +1,7 @@
 import "dotenv/config";
-import { db } from "./index";
+import { drizzle } from "drizzle-orm/node-postgres";
+import { Pool } from "pg";
+import "dotenv/config";
 import {
   users,
   servidores,
@@ -26,6 +28,18 @@ async function hashSenha(senha: string) {
 
 async function main() {
   console.log("🌱 Executando seed do banco de dados...");
+  
+  // Usa DATABASE_URL do ambiente (Supabase Pooler)
+  const databaseUrl = process.env.DATABASE_URL;
+  if (!databaseUrl) throw new Error("DATABASE_URL não configurada");
+  
+  const pool = new Pool({
+    connectionString: databaseUrl,
+    max: 5,
+    connectionTimeoutMillis: 15000,
+    ssl: { rejectUnauthorized: false },
+  });
+  const db = drizzle(pool);
 
   // Limpa tabelas (DELETE funciona melhor em poolers que TRUNCATE)
   console.log("   Limpando tabelas existentes...");
@@ -272,6 +286,7 @@ async function main() {
   console.log("   Gestor: matricula=GESTOR | senha=gestor123");
   console.log("   Servidor exemplo: matricula=2015001 | senha=servidor123");
 
+  await pool.end();
   process.exit(0);
 }
 
