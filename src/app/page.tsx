@@ -14,7 +14,6 @@ export default function Home() {
             </svg>
           </div>
           <div>
-            <p className="text-xs uppercase tracking-widest text-slate-500 font-medium">Governo do Estado</p>
             <h1 className="text-base font-semibold text-slate-900 leading-tight">
               EE Profa. Marlene Frattini
             </h1>
@@ -124,29 +123,7 @@ export default function Home() {
             </Link>
           </div>
 
-          {/* Credenciais de demonstração */}
-          <div className="mt-10 mx-auto max-w-2xl rounded-xl border border-dashed border-slate-300 bg-white/60 p-5 text-sm no-print">
-            <p className="text-slate-700 font-semibold mb-2 flex items-center gap-2">
-              <span>🔑</span> Acesso demonstração
-            </p>
-            <div className="grid md:grid-cols-2 gap-3 text-slate-600">
-              <div className="bg-white/80 rounded-lg p-3 border border-slate-200">
-                <p className="font-semibold text-slate-900 mb-1">👨‍💼 Gestor</p>
-                <p className="text-xs">Matrícula: <code className="px-1 py-0.5 bg-slate-100 rounded">GESTOR</code></p>
-                <p className="text-xs">Senha: <code className="px-1 py-0.5 bg-slate-100 rounded">gestor123</code></p>
-              </div>
-              <div className="bg-white/80 rounded-lg p-3 border border-slate-200">
-                <p className="font-semibold text-slate-900 mb-1">👩‍🏫 Servidora (Maria)</p>
-                <p className="text-xs">CPF: <code className="px-1 py-0.5 bg-slate-100 rounded">123.456.789-00</code></p>
-                <p className="text-xs">Nascimento: <code className="px-1 py-0.5 bg-slate-100 rounded">14051978</code> <span className="text-slate-400">(DDMMAAAA)</span></p>
-              </div>
-            </div>
-            <div className="mt-3 pt-3 border-t border-slate-200 text-xs">
-              <Link href="/diagnostico" className="text-sky-700 hover:underline">
-                🔍 Problemas para acessar? Execute o diagnóstico
-              </Link>
-            </div>
-          </div>
+
         </div>
       </section>
 
