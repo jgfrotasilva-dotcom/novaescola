@@ -1,40 +1,36 @@
 import { NextRequest, NextResponse } from "next/server";
 import { eq, asc, desc, and } from "drizzle-orm";
 import { db } from "@/db";
-import { evolucaoFuncional, regrasEvolucao, servidores } from "@/db/schema";
+import { evolucaoFuncional, servidores } from "@/db/schema";
 import { obterSessao } from "@/lib/auth";
 
 // ============================================================
-// REGRAS DE EVOLUÇÃO
+// REGRAS DE EVOLUÇÃO (apenas interstício)
 // ============================================================
 type Regra = {
   nivelOrigem: string;
   nivelDestino: string;
   intersticioAnos: number;
-  pontuacaoMinima: number;
-  pontuacaoAtualizacao: number;
-  pontuacaoAperfeicoamento: number;
-  pontuacaoProducao: number;
 };
 
 const REGRAS_DOCENTE: Regra[] = [
-  { nivelOrigem: "I", nivelDestino: "II", intersticioAnos: 4, pontuacaoMinima: 35, pontuacaoAtualizacao: 4, pontuacaoAperfeicoamento: 4, pontuacaoProducao: 2 },
-  { nivelOrigem: "II", nivelDestino: "III", intersticioAnos: 4, pontuacaoMinima: 40, pontuacaoAtualizacao: 4, pontuacaoAperfeicoamento: 4, pontuacaoProducao: 2 },
-  { nivelOrigem: "III", nivelDestino: "IV", intersticioAnos: 5, pontuacaoMinima: 50, pontuacaoAtualizacao: 3, pontuacaoAperfeicoamento: 3, pontuacaoProducao: 4 },
-  { nivelOrigem: "IV", nivelDestino: "V", intersticioAnos: 5, pontuacaoMinima: 60, pontuacaoAtualizacao: 3, pontuacaoAperfeicoamento: 3, pontuacaoProducao: 4 },
-  { nivelOrigem: "V", nivelDestino: "VI", intersticioAnos: 4, pontuacaoMinima: 60, pontuacaoAtualizacao: 3, pontuacaoAperfeicoamento: 3, pontuacaoProducao: 4 },
-  { nivelOrigem: "VI", nivelDestino: "VII", intersticioAnos: 4, pontuacaoMinima: 60, pontuacaoAtualizacao: 3, pontuacaoAperfeicoamento: 3, pontuacaoProducao: 4 },
-  { nivelOrigem: "VII", nivelDestino: "VIII", intersticioAnos: 4, pontuacaoMinima: 60, pontuacaoAtualizacao: 3, pontuacaoAperfeicoamento: 3, pontuacaoProducao: 4 },
+  { nivelOrigem: "I", nivelDestino: "II", intersticioAnos: 4 },
+  { nivelOrigem: "II", nivelDestino: "III", intersticioAnos: 4 },
+  { nivelOrigem: "III", nivelDestino: "IV", intersticioAnos: 5 },
+  { nivelOrigem: "IV", nivelDestino: "V", intersticioAnos: 5 },
+  { nivelOrigem: "V", nivelDestino: "VI", intersticioAnos: 4 },
+  { nivelOrigem: "VI", nivelDestino: "VII", intersticioAnos: 4 },
+  { nivelOrigem: "VII", nivelDestino: "VIII", intersticioAnos: 4 },
 ];
 
 const REGRAS_DIRETOR: Regra[] = [
-  { nivelOrigem: "I", nivelDestino: "II", intersticioAnos: 4, pontuacaoMinima: 35, pontuacaoAtualizacao: 4, pontuacaoAperfeicoamento: 4, pontuacaoProducao: 2 },
-  { nivelOrigem: "II", nivelDestino: "III", intersticioAnos: 5, pontuacaoMinima: 40, pontuacaoAtualizacao: 4, pontuacaoAperfeicoamento: 4, pontuacaoProducao: 2 },
-  { nivelOrigem: "III", nivelDestino: "IV", intersticioAnos: 6, pontuacaoMinima: 50, pontuacaoAtualizacao: 3, pontuacaoAperfeicoamento: 3, pontuacaoProducao: 4 },
-  { nivelOrigem: "IV", nivelDestino: "V", intersticioAnos: 6, pontuacaoMinima: 60, pontuacaoAtualizacao: 3, pontuacaoAperfeicoamento: 3, pontuacaoProducao: 4 },
-  { nivelOrigem: "V", nivelDestino: "VI", intersticioAnos: 5, pontuacaoMinima: 60, pontuacaoAtualizacao: 3, pontuacaoAperfeicoamento: 3, pontuacaoProducao: 4 },
-  { nivelOrigem: "VI", nivelDestino: "VII", intersticioAnos: 5, pontuacaoMinima: 60, pontuacaoAtualizacao: 3, pontuacaoAperfeicoamento: 3, pontuacaoProducao: 4 },
-  { nivelOrigem: "VII", nivelDestino: "VIII", intersticioAnos: 4, pontuacaoMinima: 60, pontuacaoAtualizacao: 3, pontuacaoAperfeicoamento: 3, pontuacaoProducao: 4 },
+  { nivelOrigem: "I", nivelDestino: "II", intersticioAnos: 4 },
+  { nivelOrigem: "II", nivelDestino: "III", intersticioAnos: 5 },
+  { nivelOrigem: "III", nivelDestino: "IV", intersticioAnos: 6 },
+  { nivelOrigem: "IV", nivelDestino: "V", intersticioAnos: 6 },
+  { nivelOrigem: "V", nivelDestino: "VI", intersticioAnos: 5 },
+  { nivelOrigem: "VI", nivelDestino: "VII", intersticioAnos: 5 },
+  { nivelOrigem: "VII", nivelDestino: "VIII", intersticioAnos: 4 },
 ];
 
 // Detecta se cargo é elegível e qual tabela de regras usar
@@ -48,7 +44,7 @@ function analisarCargo(cargo: string | null): {
     .trim()
     .toUpperCase()
     .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, ""); // remove acentos
+    .replace(/[\u0300-\u036f]/g, "");
 
   if (c.includes("DIRETOR")) return { elegivel: true, tipoRegra: "DIRETOR" };
   if (
@@ -123,23 +119,23 @@ export async function GET(req: NextRequest) {
       .where(eq(evolucaoFuncional.servidorId, sid))
       .orderBy(asc(evolucaoFuncional.numero));
 
-    const ultima = evs.length > 0 ? evs[evs.length - 1] : null;
+    // Identifica a última evolução marcada como "ehUltima"
+    const ultima = evs.find((e) => e.ehUltima) || (evs.length > 0 ? evs[evs.length - 1] : null);
 
-    // Sugere próxima transição
+    // Sugere próxima transição baseada na última evolução marcada
     let proximaRegra: Regra | null = null;
     let proximaDataSugerida: string | null = null;
+
     if (analiseCargo.tipoRegra && ultima) {
-      proximaRegra = getRegra(analiseCargo.tipoRegra, ultima.nivelPosterior, "");
-      // Busca próxima transição possível
       const tabela = analiseCargo.tipoRegra === "DIRETOR" ? REGRAS_DIRETOR : REGRAS_DOCENTE;
       const proxima = tabela.find((r) => r.nivelOrigem === ultima.nivelPosterior);
       if (proxima) {
         proximaRegra = proxima;
-        const base = ultima.dataVigencia;
-        proximaDataSugerida = adicionarAnos(base, proxima.intersticioAnos);
+        // Calcula a partir da vigência da última evolução marcada
+        proximaDataSugerida = adicionarAnos(ultima.dataVigencia, proxima.intersticioAnos);
       }
     } else if (analiseCargo.tipoRegra && evs.length === 0) {
-      // Primeira evolução
+      // Primeira evolução - baseada no nível atual e data de admissão
       const tabela = analiseCargo.tipoRegra === "DIRETOR" ? REGRAS_DIRETOR : REGRAS_DOCENTE;
       const primeira = tabela.find((r) => r.nivelOrigem === (servidor.nivel || "I"));
       if (primeira) {
@@ -189,9 +185,7 @@ export async function POST(req: NextRequest) {
     nivelPosterior,
     dataVigencia,
     dataDoe,
-    pontuacaoAtualizacao,
-    pontuacaoAperfeicoamento,
-    pontuacaoProducao,
+    ehUltima,
     dataEfetiva,
     intervencao,
     justificativa,
@@ -232,27 +226,6 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Calcula pontuação total
-  const pAtual = Number(pontuacaoAtualizacao) || 0;
-  const pAperf = Number(pontuacaoAperfeicoamento) || 0;
-  const pProd = Number(pontuacaoProducao) || 0;
-  const pTotal = pAtual + pAperf + pProd;
-
-  // Valida pontuação mínima
-  if (pTotal < regra.pontuacaoMinima) {
-    return NextResponse.json(
-      {
-        error: `Pontuação insuficiente. Total: ${pTotal}, mínimo: ${regra.pontuacaoMinima}.`,
-        detalhePontuacao: {
-          atualizacao: { obtido: pAtual, minimo: regra.pontuacaoAtualizacao },
-          aperfeicoamento: { obtido: pAperf, minimo: regra.pontuacaoAperfeicoamento },
-          producao: { obtido: pProd, minimo: regra.pontuacaoProducao },
-        },
-      },
-      { status: 400 }
-    );
-  }
-
   // Verifica duplicata de número
   const existentes = await db
     .select()
@@ -263,13 +236,21 @@ export async function POST(req: NextRequest) {
   const numero = existentes.length + 1;
   const ultima = existentes.length > 0 ? existentes[existentes.length - 1] : null;
 
-  // Calcula próxima data (vigência + interstício da próxima transição)
+  // Se ehUltima = true, calcula a próxima data
   const tabela = analiseCargo.tipoRegra === "DIRETOR" ? REGRAS_DIRETOR : REGRAS_DOCENTE;
   const proximaRegra = tabela.find((r) => r.nivelOrigem === nivelPosterior);
-  const proximaData = proximaRegra ? adicionarAnos(dataVigencia, proximaRegra.intersticioAnos) : null;
+  const proximaData = ehUltima && proximaRegra ? adicionarAnos(dataVigencia, proximaRegra.intersticioAnos) : null;
 
   // Data calculada (baseada na evolução anterior)
   const dataCalculada = ultima ? adicionarAnos(ultima.dataVigencia, regra.intersticioAnos) : null;
+
+  // Se esta evolução for marcada como "última", desmarca as outras
+  if (ehUltima) {
+    await db
+      .update(evolucaoFuncional)
+      .set({ ehUltima: false, proximaData: null })
+      .where(eq(evolucaoFuncional.servidorId, Number(servidorId)));
+  }
 
   const [criada] = await db
     .insert(evolucaoFuncional)
@@ -280,10 +261,7 @@ export async function POST(req: NextRequest) {
       nivelPosterior,
       dataVigencia,
       dataDoe: dataDoe || null,
-      pontuacaoTotal: pTotal,
-      pontuacaoAtualizacao: pAtual,
-      pontuacaoAperfeicoamento: pAperf,
-      pontuacaoProducao: pProd,
+      ehUltima: Boolean(ehUltima),
       intersticioAnos: regra.intersticioAnos,
       ultimaEvolucao: ultima?.dataVigencia || null,
       proximaData,
@@ -302,6 +280,58 @@ export async function POST(req: NextRequest) {
     .where(eq(servidores.id, Number(servidorId)));
 
   return NextResponse.json(criada, { status: 201 });
+}
+
+// ============================================================
+// PUT - Atualizar evolução (ex: marcar/desmarcar como última)
+// ============================================================
+export async function PUT(req: NextRequest) {
+  const sessao = await obterSessao();
+  if (!sessao || sessao.papel !== "gestor") {
+    return NextResponse.json({ error: "Apenas gestores" }, { status: 403 });
+  }
+
+  const url = new URL(req.url);
+  const id = url.searchParams.get("id");
+  if (!id) return NextResponse.json({ error: "ID obrigatório" }, { status: 400 });
+
+  const body = await req.json();
+
+  // Busca a evolução atual
+  const [evolucao] = await db.select().from(evolucaoFuncional).where(eq(evolucaoFuncional.id, Number(id))).limit(1);
+  if (!evolucao) return NextResponse.json({ error: "Evolução não encontrada" }, { status: 404 });
+
+  const updates: any = { ...body };
+
+  // Se vai marcar como última, recalcula a próxima data e desmarca as outras
+  if (body.ehUltima === true) {
+    // Busca servidor para saber a regra
+    const [servidor] = await db.select().from(servidores).where(eq(servidores.id, evolucao.servidorId)).limit(1);
+    if (servidor) {
+      const analise = analisarCargo(servidor.cargo);
+      if (analise.tipoRegra) {
+        const tabela = analise.tipoRegra === "DIRETOR" ? REGRAS_DIRETOR : REGRAS_DOCENTE;
+        const proximaRegra = tabela.find((r) => r.nivelOrigem === evolucao.nivelPosterior);
+        updates.proximaData = proximaRegra ? adicionarAnos(evolucao.dataVigencia, proximaRegra.intersticioAnos) : null;
+      }
+    }
+
+    // Desmarca outras evoluções do mesmo servidor
+    await db
+      .update(evolucaoFuncional)
+      .set({ ehUltima: false, proximaData: null })
+      .where(eq(evolucaoFuncional.servidorId, evolucao.servidorId));
+  } else if (body.ehUltima === false) {
+    updates.proximaData = null;
+  }
+
+  const [atualizada] = await db
+    .update(evolucaoFuncional)
+    .set(updates)
+    .where(eq(evolucaoFuncional.id, Number(id)))
+    .returning();
+
+  return NextResponse.json(atualizada);
 }
 
 // ============================================================

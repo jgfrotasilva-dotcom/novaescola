@@ -188,13 +188,10 @@ export const evolucaoFuncional = pgTable("evolucao_funcional", {
   nivelPosterior: varchar("nivel_posterior", { length: 5 }).notNull(),
   dataVigencia: date("data_vigencia").notNull(),
   dataDoe: date("data_doe"),
-  pontuacaoTotal: integer("pontuacao_total"),
-  pontuacaoAtualizacao: integer("pontuacao_atualizacao"),
-  pontuacaoAperfeicoamento: integer("pontuacao_aprimoramento"),
-  pontuacaoProducao: integer("pontuacao_producao"),
+  ehUltima: boolean("eh_ultima").notNull().default(false), // marca se é a última evolução
   intersticioAnos: integer("intersticio_anos"),
   ultimaEvolucao: date("ultima_evolucao"), // data da evolução anterior
-  proximaData: date("proxima_data"), // quando poderá evoluir novamente
+  proximaData: date("proxima_data"), // quando poderá evoluir novamente (calculado quando ehUltima = true)
   dataCalculada: date("data_calculada"), // data calculada conforme regra
   dataEfetiva: date("data_efetiva"), // data que efetivamente ocorreu
   intervencao: text("intervencao"),
