@@ -1,0 +1,62 @@
+@import "tailwindcss";
+
+@layer base {
+  html {
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+      "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+  }
+  body {
+    @apply bg-slate-50 text-slate-900;
+  }
+}
+
+/* ============ Estilos de impressão ============ */
+@media print {
+  body {
+    background: #fff !important;
+    color: #000 !important;
+    font-size: 11pt;
+  }
+  .no-print,
+  .no-print * {
+    display: none !important;
+  }
+  .print-break-before {
+    page-break-before: always;
+  }
+  .print-shadow-none {
+    box-shadow: none !important;
+  }
+  .print-container {
+    max-width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  .print-card {
+    box-shadow: none !important;
+    border: 1px solid #ccc !important;
+    page-break-inside: avoid;
+    margin-bottom: 8mm;
+  }
+  a {
+    text-decoration: none !important;
+    color: #000 !important;
+  }
+}
+
+/* Animações suaves */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in {
+  animation: fadeIn 0.4s ease-out;
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(-10px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+.animate-slide-in {
+  animation: slideIn 0.3s ease-out;
+}
