@@ -547,14 +547,38 @@ function LicencaPremioResumo({ servidorId }: { servidorId: number }) {
 // ============================================================
 function EvolucaoResumo({ servidorId }: { servidorId: number }) {
   const [dados, setDados] = useState<any>(null);
+  const [erro, setErro] = useState<string | null>(null);
+  const [carregando, setCarregando] = useState(true);
+  
   useEffect(() => {
+    setCarregando(true);
+    setErro(null);
+    console.log('[EvolucaoResumo] Buscando evoluções para servidorId:', servidorId);
+    
     fetch(`/api/evolucao-funcional?tipo=evolucoes&servidorId=${servidorId}`)
-      .then((r) => r.json())
-      .then(setDados)
-      .catch(() => setDados(null));
+      .then(async (r) => {
+        console.log('[EvolucaoResumo] Response status:', r.status);
+        const data = await r.json();
+        console.log('[EvolucaoResumo] Dados recebidos:', data);
+        if (!r.ok) {
+          throw new Error(data.error || `HTTP ${r.status}`);
+        }
+        return data;
+      })
+      .then((data) => {
+        setDados(data);
+        setCarregando(false);
+      })
+      .catch((err) => {
+        console.error('[EvolucaoResumo] Erro:', err);
+        setErro(err.message || 'Erro ao carregar evoluções');
+        setCarregando(false);
+      });
   }, [servidorId]);
 
-  if (!dados) return <p className="text-slate-500 text-sm">Carregando...</p>;
+  if (carregando) return <p className="text-slate-500 text-sm">Carregando...</p>;
+  if (erro) return <p className="text-rose-600 text-sm">⚠️ {erro}</p>;
+  if (!dados) return <p className="text-slate-500 text-sm">Nenhum dado disponível.</p>;
   if (!dados.servidor?.elegivelCargo || !dados.servidor?.elegivelCategoria) {
     return <p className="text-slate-500 text-sm">{dados.servidor?.motivoInelegibilidade || "Servidor sem direito à Evolução Funcional."}</p>;
   }

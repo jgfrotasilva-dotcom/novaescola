@@ -88,86 +88,134 @@ function adicionarAnos(data: string, anos: number): string {
 // GET
 // ============================================================
 export async function GET(req: NextRequest) {
-  const sessao = await obterSessao();
-  if (!sessao) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+  try {
+    addLog('[GET /api/evolucao-funcional] Iniciando...');
+    
+    const sessao = await obterSessao();
+    if (!sessao) {
+      addLog('[GET] Erro: Não autenticado');
+      return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+    }
+    
+    addLog(`[GET] Usuário: ${sessao.nome} (${sessao.papel})`);
 
-  const url = new URL(req.url);
-  const tipo = url.searchParams.get("tipo");
-  const servidorId = url.searchParams.get("servidorId");
+    const url = new URL(req.url);
+    const tipo = url.searchParams.get("tipo");
+    const servidorId = url.searchParams.get("servidorId");
+    
+    addLog(`[GET] tipo: ${tipo}, servidorId: ${servidorId}`);
 
-  if (tipo === "regras") {
-    return NextResponse.json({
-      DOCENTE: REGRAS_DOCENTE,
-      DIRETOR: REGRAS_DIRETOR,
-    });
-  }
-
-  if (tipo === "evolucoes" && servidorId) {
-    const sid = Number(servidorId);
-    if (sessao.papel === "servidor" && sessao.servidorId !== sid) {
-      return NextResponse.json({ error: "Acesso negado" }, { status: 403 });
+    if (tipo === "regras") {
+      addLog('[GET] Retornando regras');
+      return NextResponse.json({
+        DOCENTE: REGRAS_DOCENTE,
+        DIRETOR: REGRAS_DIRETOR,
+      });
     }
 
-    const [servidor] = await db.select().from(servidores).where(eq(servidores.id, sid)).limit(1);
-    if (!servidor) return NextResponse.json({ error: "Servidor não encontrado" }, { status: 404 });
-
-    const analiseCargo = analisarCargo(servidor.cargo);
-    const elegivelCategoria = podeEvoluir(servidor.categoria);
-
-    const evs = await db
-      .select()
-      .from(evolucaoFuncional)
-      .where(eq(evolucaoFuncional.servidorId, sid))
-      .orderBy(asc(evolucaoFuncional.numero));
-
-    // Identifica a última evolução marcada como "ehUltima"
-    const ultima = evs.find((e) => e.ehUltima) || (evs.length > 0 ? evs[evs.length - 1] : null);
-
-    // Sugere próxima transição baseada na última evolução marcada
-    let proximaRegra: Regra | null = null;
-    let proximaDataSugerida: string | null = null;
-
-    if (analiseCargo.tipoRegra && ultima) {
-      const tabela = analiseCargo.tipoRegra === "DIRETOR" ? REGRAS_DIRETOR : REGRAS_DOCENTE;
-      const proxima = tabela.find((r) => r.nivelOrigem === ultima.nivelPosterior);
-      if (proxima) {
-        proximaRegra = proxima;
-        // Calcula a partir da vigência da última evolução marcada
-        proximaDataSugerida = adicionarAnos(ultima.dataVigencia, proxima.intersticioAnos);
+    if (tipo === "evolucoes" && servidorId) {
+      const sid = Number(servidorId);
+      addLog(`[GET] Buscando servidor ID: ${sid}`);
+      
+      if (sessao.papel === "servidor" && sessao.servidorId !== sid) {
+        addLog('[GET] Erro: Acesso negado (servidor tentando acessar outro)');
+        return NextResponse.json({ error: "Acesso negado" }, { status: 403 });
       }
-    } else if (analiseCargo.tipoRegra && evs.length === 0) {
-      // Primeira evolução - baseada no nível atual e data de admissão
-      const tabela = analiseCargo.tipoRegra === "DIRETOR" ? REGRAS_DIRETOR : REGRAS_DOCENTE;
-      const primeira = tabela.find((r) => r.nivelOrigem === (servidor.nivel || "I"));
-      if (primeira) {
-        proximaRegra = primeira;
-        proximaDataSugerida = adicionarAnos(servidor.dataAdmissao, primeira.intersticioAnos);
+
+      const [servidor] = await db.select().from(servidores).where(eq(servidores.id, sid)).limit(1);
+      if (!servidor) {
+        addLog('[GET] Erro: Servidor não encontrado');
+        return NextResponse.json({ error: "Servidor não encontrado" }, { status: 404 });
       }
+      
+      addLog(`[GET] Servidor encontrado: ${servidor.nomeCompleto}`);
+
+      const analiseCargo = analisarCargo(servidor.cargo);
+      const elegivelCategoria = podeEvoluir(servidor.categoria);
+      
+      addLog(`[GET] Análise cargo: ${JSON.stringify(analiseCargo)}`);
+
+      const evs = await db
+        .select()
+        .from(evolucaoFuncional)
+        .where(eq(evolucaoFuncional.servidorId, sid))
+        .orderBy(asc(evolucaoFuncional.numero));
+      
+      addLog(`[GET] Evoluções encontradas: ${evs.length}`);
+
+      // Identifica a última evolução marcada como "ehUltima"
+      const ultima = evs.find((e) => e.ehUltima) || (evs.length > 0 ? evs[evs.length - 1] : null);
+      
+      if (ultima) {
+        addLog(`[GET] Última evolução: ${ultima.nivelAnterior}→${ultima.nivelPosterior}, dataVigencia: ${ultima.dataVigencia}`);
+      }
+
+      // Sugere próxima transição baseada na última evolução marcada
+      let proximaRegra: Regra | null = null;
+      let proximaDataSugerida: string | null = null;
+
+      if (analiseCargo.tipoRegra && ultima) {
+        const tabela = analiseCargo.tipoRegra === "DIRETOR" ? REGRAS_DIRETOR : REGRAS_DOCENTE;
+        const proxima = tabela.find((r) => r.nivelOrigem === ultima.nivelPosterior);
+        if (proxima) {
+          proximaRegra = proxima;
+          // Calcula a partir da vigência da última evolução marcada
+          if (ultima.dataVigencia) {
+            proximaDataSugerida = adicionarAnos(ultima.dataVigencia, proxima.intersticioAnos);
+            addLog(`[GET] Próxima data sugerida: ${proximaDataSugerida}`);
+          } else {
+            addLog('[GET] Aviso: ultima.dataVigencia é null');
+          }
+        }
+      } else if (analiseCargo.tipoRegra && evs.length === 0) {
+        // Primeira evolução - baseada no nível atual e data de admissão
+        const tabela = analiseCargo.tipoRegra === "DIRETOR" ? REGRAS_DIRETOR : REGRAS_DOCENTE;
+        const primeira = tabela.find((r) => r.nivelOrigem === (servidor.nivel || "I"));
+        if (primeira) {
+          proximaRegra = primeira;
+          if (servidor.dataAdmissao) {
+            proximaDataSugerida = adicionarAnos(servidor.dataAdmissao, primeira.intersticioAnos);
+            addLog(`[GET] Primeira evolução - Próxima data sugerida: ${proximaDataSugerida}`);
+          } else {
+            addLog('[GET] Aviso: servidor.dataAdmissao é null');
+          }
+        }
+      }
+
+      addLog('[GET] Sucesso!');
+      
+      return NextResponse.json({
+        servidor: {
+          id: servidor.id,
+          nome: servidor.nomeCompleto,
+          matricula: servidor.matricula,
+          cargo: servidor.cargo,
+          categoria: servidor.categoria,
+          nivel: servidor.nivel,
+          dataAdmissao: servidor.dataAdmissao,
+          elegivelCargo: analiseCargo.elegivel,
+          elegivelCategoria,
+          motivoInelegibilidade: !analiseCargo.elegivel ? analiseCargo.motivo : !elegivelCategoria ? "Categoria não elegível (apenas A-Efetivo ou ACT-F)" : null,
+          tipoRegra: analiseCargo.tipoRegra,
+        },
+        evolucoes: evs,
+        total: evs.length,
+        ultima,
+        proximaRegra,
+        proximaDataSugerida,
+      });
     }
 
-    return NextResponse.json({
-      servidor: {
-        id: servidor.id,
-        nome: servidor.nomeCompleto,
-        matricula: servidor.matricula,
-        cargo: servidor.cargo,
-        categoria: servidor.categoria,
-        nivel: servidor.nivel,
-        dataAdmissao: servidor.dataAdmissao,
-        elegivelCargo: analiseCargo.elegivel,
-        elegivelCategoria,
-        motivoInelegibilidade: !analiseCargo.elegivel ? analiseCargo.motivo : !elegivelCategoria ? "Categoria não elegível (apenas A-Efetivo ou ACT-F)" : null,
-        tipoRegra: analiseCargo.tipoRegra,
-      },
-      evolucoes: evs,
-      total: evs.length,
-      ultima,
-      proximaRegra,
-      proximaDataSugerida,
-    });
+    addLog('[GET] Erro: Parâmetros inválidos');
+    return NextResponse.json({ error: "Parâmetros inválidos" }, { status: 400 });
+  } catch (error) {
+    const errorMsg = error instanceof Error ? `${error.message}\n${error.stack}` : String(error);
+    addLog(`[GET] ERRO INESPERADO: ${errorMsg}`);
+    return NextResponse.json(
+      { error: `Erro interno: ${error instanceof Error ? error.message : String(error)}` },
+      { status: 500 }
+    );
   }
-
-  return NextResponse.json({ error: "Parâmetros inválidos" }, { status: 400 });
 }
 
 // ============================================================

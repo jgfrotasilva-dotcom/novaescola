@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Header } from "@/components/Header";
 import { Modal } from "@/components/Modal";
+import { Aniversariantes } from "@/components/Aniversariantes";
 import { formatarData, formatarCPF, situacaoCor, calcularTempoServico } from "@/lib/format";
 
 type Servidor = {
@@ -333,6 +334,9 @@ export default function GestorPage() {
                 </div>
               </Link>
             </div>
+
+            {/* Aniversariantes */}
+            <Aniversariantes />
 
             {/* Barra de busca + ação */}
             <div className="flex items-center gap-3 mb-4 flex-wrap">
